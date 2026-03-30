@@ -52,11 +52,39 @@
     left: 0;
     right: 0;
     z-index: 100;
-    padding: 20px 24px 28px;
+    padding: 0 24px 28px;
     background: linear-gradient(to top, var(--bg-deep) 60%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #input-row {
     display: flex;
     gap: 12px;
     align-items: flex-end;
+  }
+
+  /* Refresh hint */
+  #refresh-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    opacity: 0.6;
+    letter-spacing: 0.3px;
+    text-align: center;
+    padding-top: 20px;
+  }
+
+  #refresh-hint kbd {
+    display: inline-block;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 10px;
+    margin: 0 2px;
+    vertical-align: 1px;
   }
 
   #input-area textarea {
@@ -241,6 +269,15 @@
     display: none;
   }
 
+  #completed-date {
+    float: right;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    color: var(--accent-cyan);
+    opacity: 0.7;
+    text-transform: none;
+  }
+
   .completed-item {
     font-family: 'Caveat', cursive;
     font-size: 18px;
@@ -311,34 +348,6 @@
     font-weight: 500;
   }
 
-  /* Refresh hint */
-  #refresh-hint {
-    position: fixed;
-    bottom: 98px;
-    right: 28px;
-    z-index: 90;
-    font-size: 11px;
-    color: var(--text-muted);
-    opacity: 0.45;
-    letter-spacing: 0.3px;
-    font-style: italic;
-    pointer-events: none;
-    text-align: right;
-  }
-
-  #refresh-hint kbd {
-    display: inline-block;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    border-radius: 4px;
-    padding: 1px 6px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 10px;
-    font-style: normal;
-    margin: 0 1px;
-    vertical-align: 1px;
-  }
-
   /* Congrats toast */
   .congrats-toast {
     position: fixed;
@@ -405,18 +414,17 @@
 <div id="bubble-canvas"></div>
 
 <div id="completed-area">
-  <div id="completed-header">Completed</div>
+  <div id="completed-header">Completed <span id="completed-date"></span></div>
 </div>
 
 <div id="counter"></div>
 
-<div id="refresh-hint">
-  Refresh page <kbd>F5</kbd> for a blank board
-</div>
-
 <div id="input-area">
-  <textarea id="task-input" placeholder="Type tasks, one per line…&#10;e.g. Buy groceries&#10;     Finish report&#10;     Call mom" rows="1"></textarea>
-  <button id="add-btn">Add Bubbles</button>
+  <div id="refresh-hint">Refresh the page <kbd>F5</kbd> to get a blank board</div>
+  <div id="input-row">
+    <textarea id="task-input" placeholder="Type tasks, one per line…&#10;e.g. Buy groceries&#10;     Finish report&#10;     Call mom" rows="1"></textarea>
+    <button id="add-btn">Add Bubbles</button>
+  </div>
 </div>
 
 <script>
@@ -666,6 +674,7 @@ function popBubble(bubble) {
   bubbles = bubbles.filter(b => b !== bubble);
 
   completedHeader.style.display = 'block';
+  document.getElementById('completed-date').textContent = getDateStr();
   const item = document.createElement('div');
   item.className = 'completed-item';
   item.textContent = text;
