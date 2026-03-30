@@ -33,7 +33,6 @@
     position: relative;
   }
 
-  /* Ambient background */
   body::before {
     content: '';
     position: fixed;
@@ -127,21 +126,26 @@
     align-items: center;
     justify-content: center;
     text-align: center;
-    cursor: pointer;
+    cursor: grab;
     user-select: none;
-    transition: transform 0.15s ease-out, box-shadow 0.3s;
-    will-change: transform;
+    transition: box-shadow 0.3s;
+    will-change: left, top;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
   }
 
+  .bubble.dragging {
+    cursor: grabbing;
+    z-index: 55;
+    filter: brightness(1.15);
+  }
+
   .bubble:hover {
-    transform: scale(1.08) !important;
     z-index: 50;
   }
 
   .bubble:hover::after {
-    content: '✓ click to complete';
+    content: '\2799  hold 2s to complete';
     position: absolute;
     bottom: -26px;
     font-size: 11px;
@@ -152,12 +156,44 @@
     opacity: 0.8;
   }
 
+  .bubble.dragging::after,
+  .bubble.pressing::after {
+    display: none;
+  }
+
   .bubble span {
     font-family: 'Caveat', cursive;
     font-weight: 600;
     padding: 16px;
     line-height: 1.2;
     pointer-events: none;
+  }
+
+  /* Long-press progress ring */
+  .press-ring {
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .pressing .press-ring {
+    opacity: 1;
+  }
+
+  .press-ring svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+  }
+
+  .progress-circle {
+    fill: none;
+    stroke-width: 3;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 4px currentColor);
   }
 
   /* Pop animation */
@@ -172,7 +208,6 @@
     100% { transform: scale(0); opacity: 0; }
   }
 
-  /* Particles on pop */
   .particle {
     position: absolute;
     border-radius: 50%;
@@ -222,7 +257,7 @@
   }
 
   .completed-item::before {
-    content: '✓';
+    content: '\2713';
     color: var(--accent-cyan);
     margin-right: 8px;
     font-family: 'DM Sans', sans-serif;
@@ -275,13 +310,96 @@
     color: var(--accent-cyan);
     font-weight: 500;
   }
+
+  /* Refresh hint */
+  #refresh-hint {
+    position: fixed;
+    bottom: 98px;
+    right: 28px;
+    z-index: 90;
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0.45;
+    letter-spacing: 0.3px;
+    font-style: italic;
+    pointer-events: none;
+    text-align: right;
+  }
+
+  #refresh-hint kbd {
+    display: inline-block;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 10px;
+    font-style: normal;
+    margin: 0 1px;
+    vertical-align: 1px;
+  }
+
+  /* Congrats toast */
+  .congrats-toast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.8);
+    z-index: 200;
+    background: linear-gradient(135deg, rgba(100,255,218,0.1), rgba(199,146,234,0.1));
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(100,255,218,0.2);
+    border-radius: 22px;
+    padding: 30px 44px;
+    text-align: center;
+    opacity: 0;
+    pointer-events: none;
+    animation: toastIn 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards,
+               toastOut 0.4s ease-in 2.6s forwards;
+  }
+
+  .congrats-toast .emoji { font-size: 34px; margin-bottom: 10px; }
+  .congrats-toast .msg {
+    font-family: 'Caveat', cursive;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    line-height: 1.3;
+  }
+  .congrats-toast .date-line {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    letter-spacing: 0.5px;
+  }
+
+  @keyframes toastIn {
+    to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
+  @keyframes toastOut {
+    to { opacity: 0; transform: translate(-50%, -60%) scale(0.95); }
+  }
+
+  /* Shake when press is almost done */
+  .bubble.shaking {
+    animation: shake 0.07s linear infinite;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    25% { transform: translate(-2px, 1px); }
+    50% { transform: translate(2px, -1px); }
+    75% { transform: translate(-1px, -2px); }
+  }
 </style>
 </head>
 <body>
 
 <div id="title">
   <h1>Bubble Todo</h1>
-  <p>Add tasks below — pop them when done</p>
+  <p>Add tasks below — drag to move, hold 2s to pop</p>
 </div>
 
 <div id="bubble-canvas"></div>
@@ -291,6 +409,10 @@
 </div>
 
 <div id="counter"></div>
+
+<div id="refresh-hint">
+  Refresh page <kbd>F5</kbd> for a blank board
+</div>
 
 <div id="input-area">
   <textarea id="task-input" placeholder="Type tasks, one per line…&#10;e.g. Buy groceries&#10;     Finish report&#10;     Call mom" rows="1"></textarea>
@@ -306,12 +428,21 @@ const completedHeader = document.getElementById('completed-header');
 const counterEl = document.getElementById('counter');
 
 const COLORS = [
-  { bg: 'rgba(100,255,218,0.12)', border: 'rgba(100,255,218,0.35)', text: '#a8fff0', shadow: 'rgba(100,255,218,0.15)' },
-  { bg: 'rgba(255,107,181,0.12)', border: 'rgba(255,107,181,0.35)', text: '#ffb3d9', shadow: 'rgba(255,107,181,0.15)' },
-  { bg: 'rgba(130,177,255,0.12)', border: 'rgba(130,177,255,0.35)', text: '#b3d1ff', shadow: 'rgba(130,177,255,0.15)' },
-  { bg: 'rgba(199,146,234,0.12)', border: 'rgba(199,146,234,0.35)', text: '#dbc4f0', shadow: 'rgba(199,146,234,0.15)' },
-  { bg: 'rgba(255,224,130,0.12)', border: 'rgba(255,224,130,0.35)', text: '#fff0b3', shadow: 'rgba(255,224,130,0.15)' },
-  { bg: 'rgba(255,171,112,0.12)', border: 'rgba(255,171,112,0.35)', text: '#ffd4b3', shadow: 'rgba(255,171,112,0.15)' },
+  { bg: 'rgba(100,255,218,0.12)', border: 'rgba(100,255,218,0.35)', text: '#a8fff0', shadow: 'rgba(100,255,218,0.15)', hex: '#64ffda' },
+  { bg: 'rgba(255,107,181,0.12)', border: 'rgba(255,107,181,0.35)', text: '#ffb3d9', shadow: 'rgba(255,107,181,0.15)', hex: '#ff6bb5' },
+  { bg: 'rgba(130,177,255,0.12)', border: 'rgba(130,177,255,0.35)', text: '#b3d1ff', shadow: 'rgba(130,177,255,0.15)', hex: '#82b1ff' },
+  { bg: 'rgba(199,146,234,0.12)', border: 'rgba(199,146,234,0.35)', text: '#dbc4f0', shadow: 'rgba(199,146,234,0.15)', hex: '#c792ea' },
+  { bg: 'rgba(255,224,130,0.12)', border: 'rgba(255,224,130,0.35)', text: '#fff0b3', shadow: 'rgba(255,224,130,0.15)', hex: '#ffe082' },
+  { bg: 'rgba(255,171,112,0.12)', border: 'rgba(255,171,112,0.35)', text: '#ffd4b3', shadow: 'rgba(255,171,112,0.15)', hex: '#ffab70' },
+];
+
+const CONGRATS = [
+  "Congrats! You're so productive today",
+  "Amazing! You're crushing it today",
+  "Way to go! Another one bites the dust",
+  "Boom! Task obliterated",
+  "Nice work! You're on fire today",
+  "Look at you go! Unstoppable",
 ];
 
 let bubbles = [];
@@ -319,7 +450,14 @@ let totalTasks = 0;
 let completedTasks = 0;
 let animFrame;
 
-// Auto-resize textarea
+// Press state
+let pressBubble = null;
+let pressStartTime = 0;
+let pressRafId = null;
+
+const HOLD_MS = 2000;
+
+// ── Textarea auto-resize ──
 input.addEventListener('input', () => {
   input.style.height = '52px';
   input.style.height = Math.min(input.scrollHeight, 140) + 'px';
@@ -327,21 +465,32 @@ input.addEventListener('input', () => {
 
 addBtn.addEventListener('click', addTasks);
 input.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.ctrlKey) {
-    e.preventDefault();
-    addTasks();
-  }
+  if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); addTasks(); }
 });
+
+function getDateStr() {
+  const d = new Date();
+  return String(d.getMonth()+1).padStart(2,'0') + '/'
+       + String(d.getDate()).padStart(2,'0') + '/'
+       + String(d.getFullYear()).slice(-2);
+}
+
+function showToast() {
+  const t = document.createElement('div');
+  t.className = 'congrats-toast';
+  t.innerHTML = `
+    <div class="emoji">🎉</div>
+    <div class="msg">${CONGRATS[Math.floor(Math.random()*CONGRATS.length)]}</div>
+    <div class="date-line">${getDateStr()}</div>`;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3400);
+}
 
 function addTasks() {
   const text = input.value.trim();
   if (!text) return;
-
-  const tasks = text.split('\n').map(t => t.trim()).filter(t => t.length > 0);
-  tasks.forEach((task, i) => {
-    setTimeout(() => createBubble(task), i * 120);
-  });
-
+  const tasks = text.split('\n').map(t => t.trim()).filter(t => t);
+  tasks.forEach((task, i) => setTimeout(() => createBubble(task), i * 120));
   totalTasks += tasks.length;
   updateCounter();
   input.value = '';
@@ -356,26 +505,16 @@ function createBubble(text) {
   const el = document.createElement('div');
   el.className = 'bubble';
 
-  const safeArea = {
-    left: 40,
-    top: 90,
-    right: window.innerWidth - size - 300,
-    bottom: window.innerHeight - size - 110,
-  };
-
-  const x = safeArea.left + Math.random() * (safeArea.right - safeArea.left);
-  const y = safeArea.top + Math.random() * (safeArea.bottom - safeArea.top);
+  const safeRight = Math.max(200, window.innerWidth - size - 300);
+  const safeBottom = Math.max(180, window.innerHeight - size - 110);
+  const x = 40 + Math.random() * (safeRight - 40);
+  const y = 90 + Math.random() * (safeBottom - 90);
 
   el.style.cssText = `
-    width: ${size}px;
-    height: ${size}px;
-    left: ${x}px;
-    top: ${y}px;
-    background: ${color.bg};
-    border: 1.5px solid ${color.border};
-    box-shadow: 0 4px 30px ${color.shadow}, inset 0 0 30px rgba(255,255,255,0.03);
-    opacity: 0;
-    transform: scale(0);
+    width:${size}px; height:${size}px; left:${x}px; top:${y}px;
+    background:${color.bg}; border:1.5px solid ${color.border};
+    box-shadow:0 4px 30px ${color.shadow}, inset 0 0 30px rgba(255,255,255,0.03);
+    opacity:0; transform:scale(0);
   `;
 
   const span = document.createElement('span');
@@ -384,73 +523,148 @@ function createBubble(text) {
   span.style.color = color.text;
   el.appendChild(span);
 
+  // Progress ring SVG
+  const ringSize = size + 10;
+  const r = ringSize / 2 - 2;
+  const circ = 2 * Math.PI * r;
+  const ring = document.createElement('div');
+  ring.className = 'press-ring';
+  ring.innerHTML = `<svg viewBox="0 0 ${ringSize} ${ringSize}">
+    <circle cx="${ringSize/2}" cy="${ringSize/2}" r="${r}"
+      stroke="${color.hex}" stroke-dasharray="${circ}" stroke-dashoffset="${circ}"
+      class="progress-circle" style="color:${color.hex}"/>
+  </svg>`;
+  el.appendChild(ring);
+
   canvas.appendChild(el);
 
-  // Animate in
   requestAnimationFrame(() => {
     el.style.transition = 'opacity 0.5s ease-out, transform 0.5s cubic-bezier(0.34,1.56,0.64,1)';
     el.style.opacity = '1';
     el.style.transform = 'scale(1)';
   });
 
-  const bubble = {
-    el,
-    x,
-    y,
-    size,
-    text,
-    color,
-    vx: (Math.random() - 0.5) * 0.4,
-    vy: (Math.random() - 0.5) * 0.4,
-    phase: Math.random() * Math.PI * 2,
-    wobbleSpeed: 0.005 + Math.random() * 0.008,
-    wobbleAmp: 8 + Math.random() * 12,
+  const bubble = { el, x, y, size, text, color, circ,
+    vx: (Math.random()-0.5)*0.4, vy: (Math.random()-0.5)*0.4,
+    phase: Math.random()*Math.PI*2,
+    wobbleSpeed: 0.005+Math.random()*0.008,
+    wobbleAmp: 8+Math.random()*12,
+    frozen: false,
   };
 
-  el.addEventListener('click', () => popBubble(bubble));
-  bubbles.push(bubble);
+  // ── Pointer events: drag + long-press ──
+  let dragOX, dragOY, hasDragged;
 
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    hasDragged = false;
+    dragOX = e.clientX - bubble.x;
+    dragOY = e.clientY - bubble.y;
+    bubble.frozen = true;
+
+    // Start press
+    pressBubble = bubble;
+    pressStartTime = Date.now();
+    el.classList.add('pressing');
+    startPressRing(bubble);
+
+    const onMove = (ev) => {
+      const dx = ev.clientX - bubble.x - dragOX;
+      const dy = ev.clientY - bubble.y - dragOY;
+      if (!hasDragged && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+        hasDragged = true;
+        cancelPressRing(bubble);
+        el.classList.add('dragging');
+      }
+      if (hasDragged) {
+        bubble.x = ev.clientX - dragOX;
+        bubble.y = ev.clientY - dragOY;
+        el.style.left = bubble.x + 'px';
+        el.style.top = bubble.y + 'px';
+      }
+    };
+
+    const onUp = (ev) => {
+      el.releasePointerCapture(ev.pointerId);
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointercancel', onUp);
+      el.classList.remove('dragging');
+      cancelPressRing(bubble);
+      bubble.frozen = false;
+      if (hasDragged) {
+        bubble.vx = (Math.random()-0.5)*0.5;
+        bubble.vy = (Math.random()-0.5)*0.5;
+      }
+    };
+
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
+  });
+
+  bubbles.push(bubble);
   if (!animFrame) startAnimation();
+}
+
+function startPressRing(bubble) {
+  const circle = bubble.el.querySelector('.progress-circle');
+  if (!circle) return;
+
+  function tick() {
+    if (pressBubble !== bubble) return;
+    const elapsed = Date.now() - pressStartTime;
+    const progress = Math.min(elapsed / HOLD_MS, 1);
+    circle.style.strokeDashoffset = bubble.circ * (1 - progress);
+
+    if (progress > 0.65) bubble.el.classList.add('shaking');
+
+    if (progress >= 1) {
+      cancelPressRing(bubble);
+      popBubble(bubble);
+      return;
+    }
+    pressRafId = requestAnimationFrame(tick);
+  }
+  pressRafId = requestAnimationFrame(tick);
+}
+
+function cancelPressRing(bubble) {
+  if (pressBubble === bubble) pressBubble = null;
+  if (pressRafId) { cancelAnimationFrame(pressRafId); pressRafId = null; }
+  bubble.el.classList.remove('pressing', 'shaking');
+  const c = bubble.el.querySelector('.progress-circle');
+  if (c) c.style.strokeDashoffset = bubble.circ;
 }
 
 function popBubble(bubble) {
   const { el, x, y, size, text, color } = bubble;
 
-  // Particles
-  const cx = x + size / 2;
-  const cy = y + size / 2;
-  for (let i = 0; i < 14; i++) {
+  const cx = x + size/2, cy = y + size/2;
+  for (let i = 0; i < 16; i++) {
     const p = document.createElement('div');
     p.className = 'particle';
-    const angle = (Math.PI * 2 * i) / 14 + Math.random() * 0.4;
-    const dist = 40 + Math.random() * 80;
-    const pSize = 3 + Math.random() * 6;
-    p.style.cssText = `
-      width: ${pSize}px;
-      height: ${pSize}px;
-      left: ${cx}px;
-      top: ${cy}px;
-      background: ${color.border};
-      box-shadow: 0 0 6px ${color.shadow};
-      transition: all 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-      opacity: 1;
-    `;
+    const angle = (Math.PI*2*i)/16 + Math.random()*0.4;
+    const dist = 40 + Math.random()*90;
+    const pS = 3 + Math.random()*6;
+    p.style.cssText = `width:${pS}px;height:${pS}px;left:${cx}px;top:${cy}px;
+      background:${color.border};box-shadow:0 0 8px ${color.shadow};
+      transition:all 0.7s cubic-bezier(0.25,0.46,0.45,0.94);opacity:1;`;
     canvas.appendChild(p);
     requestAnimationFrame(() => {
-      p.style.left = (cx + Math.cos(angle) * dist) + 'px';
-      p.style.top = (cy + Math.sin(angle) * dist) + 'px';
+      p.style.left = (cx + Math.cos(angle)*dist) + 'px';
+      p.style.top = (cy + Math.sin(angle)*dist) + 'px';
       p.style.opacity = '0';
-      p.style.transform = `scale(0)`;
+      p.style.transform = 'scale(0)';
     });
     setTimeout(() => p.remove(), 800);
   }
 
   el.classList.add('popping');
   setTimeout(() => el.remove(), 600);
-
   bubbles = bubbles.filter(b => b !== bubble);
 
-  // Add to completed list
   completedHeader.style.display = 'block';
   const item = document.createElement('div');
   item.className = 'completed-item';
@@ -459,73 +673,51 @@ function popBubble(bubble) {
 
   completedTasks++;
   updateCounter();
+  showToast();
 
-  if (bubbles.length === 0) cancelAnimationFrame(animFrame), animFrame = null;
+  if (bubbles.length === 0) { cancelAnimationFrame(animFrame); animFrame = null; }
 }
 
 function updateCounter() {
-  if (totalTasks === 0) {
-    counterEl.textContent = '';
-    return;
-  }
-  const remaining = totalTasks - completedTasks;
-  counterEl.innerHTML = `<strong>${completedTasks}</strong> done · ${remaining} floating`;
+  if (totalTasks === 0) { counterEl.textContent = ''; return; }
+  counterEl.innerHTML = `<strong>${completedTasks}</strong> done · ${totalTasks - completedTasks} floating`;
 }
 
 function startAnimation() {
   function animate() {
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-    const now = Date.now();
-
+    const W = window.innerWidth, H = window.innerHeight;
     for (const b of bubbles) {
+      if (b.frozen) continue;
       b.phase += b.wobbleSpeed;
+      b.x += b.vx; b.y += b.vy;
+      const wX = Math.sin(b.phase) * b.wobbleAmp;
+      const wY = Math.cos(b.phase*0.7) * b.wobbleAmp * 0.6;
 
-      // Gentle drift
-      b.x += b.vx;
-      b.y += b.vy;
-
-      // Wobble
-      const wobbleX = Math.sin(b.phase) * b.wobbleAmp;
-      const wobbleY = Math.cos(b.phase * 0.7) * b.wobbleAmp * 0.6;
-
-      // Bounce off edges
-      const margin = 20;
-      if (b.x < margin) { b.x = margin; b.vx *= -1; }
+      if (b.x < 20) { b.x = 20; b.vx *= -1; }
       if (b.x > W - b.size - 300) { b.x = W - b.size - 300; b.vx *= -1; }
       if (b.y < 80) { b.y = 80; b.vy *= -1; }
       if (b.y > H - b.size - 110) { b.y = H - b.size - 110; b.vy *= -1; }
 
-      // Simple repulsion between bubbles
-      for (const other of bubbles) {
-        if (other === b) continue;
-        const dx = (b.x + b.size/2) - (other.x + other.size/2);
-        const dy = (b.y + b.size/2) - (other.y + other.size/2);
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        const minDist = (b.size + other.size) / 2 + 10;
-        if (dist < minDist && dist > 0) {
-          const force = (minDist - dist) * 0.01;
-          b.vx += (dx / dist) * force;
-          b.vy += (dy / dist) * force;
+      for (const o of bubbles) {
+        if (o === b) continue;
+        const dx = (b.x+b.size/2) - (o.x+o.size/2);
+        const dy = (b.y+b.size/2) - (o.y+o.size/2);
+        const d = Math.sqrt(dx*dx+dy*dy);
+        const min = (b.size+o.size)/2+10;
+        if (d < min && d > 0) {
+          const f = (min-d)*0.01;
+          b.vx += (dx/d)*f; b.vy += (dy/d)*f;
         }
       }
-
-      // Dampen velocity
-      b.vx *= 0.998;
-      b.vy *= 0.998;
-
-      const finalX = b.x + wobbleX;
-      const finalY = b.y + wobbleY;
-      b.el.style.left = finalX + 'px';
-      b.el.style.top = finalY + 'px';
+      b.vx *= 0.998; b.vy *= 0.998;
+      b.el.style.left = (b.x + wX) + 'px';
+      b.el.style.top = (b.y + wY) + 'px';
     }
-
     animFrame = requestAnimationFrame(animate);
   }
   animate();
 }
 
-// Focus input on load
 setTimeout(() => input.focus(), 300);
 </script>
 </body>
