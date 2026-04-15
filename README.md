@@ -4,6 +4,8 @@ A playful, single-page to-do app where tasks float as colorful bubbles on a dark
 
 ![HTML](https://img.shields.io/badge/Pure-HTML%2FCSS%2FJS-blue)
 
+![Bubble Todo Demo](BubbleTodo.gif)
+
 ## How It Works
 
 1. **Add tasks** — Type one or more tasks (one per line) in the input area, then click **Add Bubbles** or press `Ctrl+Enter`. Each task spawns as a floating, gently wobbling bubble.
