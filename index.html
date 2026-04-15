@@ -491,8 +491,14 @@ const HOLD_MS = 2000;
 const STORAGE_KEY = 'bubbleTodoState';
 
 // ── localStorage persistence ──
+function todayKey() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
 function saveState() {
   const state = {
+    date: todayKey(),
     bubbles: bubbles.map(b => ({
       text: b.text,
       x: b.x,
@@ -511,6 +517,11 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const state = JSON.parse(raw);
+    // New day → fresh board
+    if (state.date !== todayKey()) {
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
     if (state.completedTexts && state.completedTexts.length > 0) {
       completedTexts = state.completedTexts;
       completedTasks = state.completedTasks || completedTexts.length;
