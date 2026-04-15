@@ -173,7 +173,7 @@
   }
 
   .bubble:hover::after {
-    content: '\2799  hold 2s to complete';
+    content: '\2799  hold 2s to complete · right-click to delete';
     position: absolute;
     bottom: -26px;
     font-size: 11px;
@@ -429,7 +429,7 @@
 
 <div id="title">
   <h1>Bubble Todo</h1>
-  <p>Add tasks below — drag to move, hold 2s to pop</p>
+  <p>Add tasks below — drag to move, hold 2s to pop, right-click to delete</p>
 </div>
 
 <div id="bubble-canvas"></div>
@@ -442,7 +442,7 @@
 <div id="counter"></div>
 
 <div id="input-area">
-  <div id="refresh-hint">Refresh the page <kbd>F5</kbd> to get a blank board</div>
+  <div id="refresh-hint">Your board is auto-saved · <kbd>F5</kbd> won't lose your work</div>
   <div id="input-row">
     <textarea id="task-input" placeholder="Type tasks, one per line…&#10;e.g. Buy groceries&#10;     Finish report&#10;     Call mom" rows="1"></textarea>
     <button id="add-btn">Add Bubbles</button>
@@ -488,6 +488,56 @@ let pressStartTime = 0;
 let pressRafId = null;
 
 const HOLD_MS = 2000;
+const STORAGE_KEY = 'bubbleTodoState';
+
+// ── localStorage persistence ──
+function saveState() {
+  const state = {
+    bubbles: bubbles.map(b => ({
+      text: b.text,
+      x: b.x,
+      y: b.y,
+      colorIndex: COLORS.indexOf(b.color),
+    })),
+    completedTexts,
+    totalTasks,
+    completedTasks,
+  };
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (state.completedTexts && state.completedTexts.length > 0) {
+      completedTexts = state.completedTexts;
+      completedTasks = state.completedTasks || completedTexts.length;
+      totalTasks = state.totalTasks || completedTasks;
+      completedHeader.style.display = 'block';
+      document.getElementById('completed-date').textContent = getDateStr();
+      downloadBtn.style.display = 'block';
+      for (const t of completedTexts) {
+        const item = document.createElement('div');
+        item.className = 'completed-item';
+        item.textContent = t;
+        completedArea.appendChild(item);
+      }
+    }
+    if (state.bubbles && state.bubbles.length > 0) {
+      totalTasks = state.totalTasks || (state.bubbles.length + completedTasks);
+      for (const b of state.bubbles) {
+        createBubble(b.text, b.x, b.y, b.colorIndex);
+      }
+    }
+    updateCounter();
+  } catch(e) {}
+}
+
+function clearState() {
+  localStorage.removeItem(STORAGE_KEY);
+}
 
 // ── Textarea auto-resize ──
 input.addEventListener('input', () => {
@@ -522,25 +572,34 @@ function addTasks() {
   const text = input.value.trim();
   if (!text) return;
   const tasks = text.split('\n').map(t => t.trim()).filter(t => t);
-  tasks.forEach((task, i) => setTimeout(() => createBubble(task), i * 120));
+  tasks.forEach((task, i) => setTimeout(() => {
+    createBubble(task);
+    saveState();
+  }, i * 120));
   totalTasks += tasks.length;
   updateCounter();
   input.value = '';
   input.style.height = '52px';
 }
 
-function createBubble(text) {
-  const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+function createBubble(text, savedX, savedY, colorIndex) {
+  const color = colorIndex != null ? COLORS[colorIndex] : COLORS[Math.floor(Math.random() * COLORS.length)];
   const size = Math.max(100, Math.min(180, 90 + text.length * 4));
   const fontSize = size < 120 ? 16 : size < 150 ? 19 : 22;
 
   const el = document.createElement('div');
   el.className = 'bubble';
 
-  const safeRight = Math.max(200, window.innerWidth - size - 300);
-  const safeBottom = Math.max(180, window.innerHeight - size - 110);
-  const x = 40 + Math.random() * (safeRight - 40);
-  const y = 90 + Math.random() * (safeBottom - 90);
+  let x, y;
+  if (savedX != null && savedY != null) {
+    x = savedX;
+    y = savedY;
+  } else {
+    const safeRight = Math.max(200, window.innerWidth - size - 300);
+    const safeBottom = Math.max(180, window.innerHeight - size - 110);
+    x = 40 + Math.random() * (safeRight - 40);
+    y = 90 + Math.random() * (safeBottom - 90);
+  }
 
   el.style.cssText = `
     width:${size}px; height:${size}px; left:${x}px; top:${y}px;
@@ -584,10 +643,18 @@ function createBubble(text) {
     frozen: false,
   };
 
+  // ── Right-click to delete (no completion) ──
+  el.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    cancelPressRing(bubble);
+    deleteBubble(bubble);
+  });
+
   // ── Pointer events: drag + long-press ──
   let dragOX, dragOY, hasDragged;
 
   el.addEventListener('pointerdown', (e) => {
+    if (e.button === 2) return; // skip right-click for drag
     e.preventDefault();
     el.setPointerCapture(e.pointerId);
     hasDragged = false;
@@ -628,6 +695,7 @@ function createBubble(text) {
       if (hasDragged) {
         bubble.vx = (Math.random()-0.5)*0.5;
         bubble.vy = (Math.random()-0.5)*0.5;
+        saveState();
       }
     };
 
@@ -670,6 +738,18 @@ function cancelPressRing(bubble) {
   if (c) c.style.strokeDashoffset = bubble.circ;
 }
 
+// ── Delete bubble (right-click) — just disappears, no completed list ──
+function deleteBubble(bubble) {
+  const { el } = bubble;
+  el.classList.add('popping');
+  setTimeout(() => el.remove(), 600);
+  bubbles = bubbles.filter(b => b !== bubble);
+  totalTasks--;
+  updateCounter();
+  saveState();
+  if (bubbles.length === 0) { cancelAnimationFrame(animFrame); animFrame = null; }
+}
+
 function popBubble(bubble) {
   const { el, x, y, size, text, color } = bubble;
 
@@ -709,6 +789,7 @@ function popBubble(bubble) {
   updateCounter();
   showToast();
   downloadBtn.style.display = 'block';
+  saveState();
 
   if (bubbles.length === 0) { cancelAnimationFrame(animFrame); animFrame = null; }
 }
@@ -759,11 +840,13 @@ downloadBtn.addEventListener('click', () => {
   const blob = new Blob([content], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `completed-tasks-${getDateStr().replace(/\//g, '-')}.txt`;
+  a.download = `completed-tasks-${getDateStr().replace(/\//g, '-')}.md`;
   a.click();
   URL.revokeObjectURL(a.href);
 });
 
+// ── Load saved state on startup ──
+loadState();
 setTimeout(() => input.focus(), 300);
 </script>
 </body>
