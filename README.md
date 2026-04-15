@@ -1,6 +1,6 @@
 # Bubble Todo
 
-A playful, single-page to-do app where tasks float as colorful bubbles on a dark glassmorphic canvas. No build tools, no frameworks, no backend — just open `index.html` in a browser (or click https://summerzhao618.github.io/BubbleTodo/).
+A playful, single-page to-do app where tasks float as colorful bubbles on a dark glassmorphic canvas. No build tools, no frameworks, no backend — just open `index.html` in a browser, or click [here](https://summerzhao618.github.io/BubbleTodo/).
 
 ![HTML](https://img.shields.io/badge/Pure-HTML%2FCSS%2FJS-blue)
 
