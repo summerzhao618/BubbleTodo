@@ -278,7 +278,7 @@
     text-transform: none;
   }
 
-  #download-btn {
+  #export-btn, #download-btn {
     display: none;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
@@ -294,9 +294,16 @@
     transition: background 0.3s, box-shadow 0.3s;
   }
 
-  #download-btn:hover {
+  #export-btn:hover, #download-btn:hover {
     background: rgba(100, 255, 218, 0.1);
     box-shadow: 0 0 12px rgba(100, 255, 218, 0.15);
+  }
+
+  /* Board export sits above the completed list — it covers the whole board */
+  #export-btn {
+    color: var(--text-main);
+    border-color: rgba(255, 255, 255, 0.18);
+    margin: 0 12px 14px;
   }
 
   .completed-item {
@@ -435,6 +442,7 @@
 <div id="bubble-canvas"></div>
 
 <div id="completed-area">
+  <button id="export-btn" title="Download the whole board as Markdown (Ctrl+S)">&#8681; Download Board</button>
   <div id="completed-header">Completed <span id="completed-date"></span></div>
   <button id="download-btn">&#8681; Download List</button>
 </div>
@@ -457,6 +465,7 @@ const completedArea = document.getElementById('completed-area');
 const completedHeader = document.getElementById('completed-header');
 const counterEl = document.getElementById('counter');
 const downloadBtn = document.getElementById('download-btn');
+const exportBtn = document.getElementById('export-btn');
 
 const COLORS = [
   { bg: 'rgba(100,255,218,0.12)', border: 'rgba(100,255,218,0.35)', text: '#a8fff0', shadow: 'rgba(100,255,218,0.15)', hex: '#64ffda' },
@@ -806,6 +815,7 @@ function popBubble(bubble) {
 }
 
 function updateCounter() {
+  exportBtn.style.display = (totalTasks > 0 || completedTexts.length > 0) ? 'block' : 'none';
   if (totalTasks === 0) { counterEl.textContent = ''; return; }
   counterEl.innerHTML = `<strong>${completedTasks}</strong> done · ${totalTasks - completedTasks} floating`;
 }
@@ -845,15 +855,58 @@ function startAnimation() {
   animate();
 }
 
-downloadBtn.addEventListener('click', () => {
-  const lines = completedTexts.map((t, i) => `${i + 1}. ${t}`);
-  const content = `Completed Tasks - ${getDateStr()}\n${'='.repeat(30)}\n\n${lines.join('\n')}\n\nTotal: ${completedTexts.length} task${completedTexts.length > 1 ? 's' : ''}\n`;
-  const blob = new Blob([content], { type: 'text/plain' });
+function downloadFile(filename, content) {
+  const blob = new Blob([content], { type: 'text/markdown' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `completed-tasks-${getDateStr().replace(/\//g, '-')}.md`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// Keep task text from being read as Markdown syntax
+function mdEscape(text) {
+  return text.replace(/([\\`*_~\[\]])/g, '\\$&');
+}
+
+// Whole board: floating bubbles as open items, completed ones struck through
+function buildBoardMarkdown() {
+  const pending = bubbles.map(b => b.text);
+  const done = completedTexts;
+  let md = `# Bubble Todo — ${getDateStr()}\n\n`;
+
+  if (pending.length) {
+    md += `## To Do (${pending.length})\n\n`;
+    md += pending.map(t => `- [ ] ${mdEscape(t)}`).join('\n') + '\n\n';
+  }
+  if (done.length) {
+    md += `## Completed (${done.length})\n\n`;
+    md += done.map(t => `- [x] ~~${mdEscape(t)}~~`).join('\n') + '\n\n';
+  }
+  if (!pending.length && !done.length) md += '_Nothing on the board yet._\n\n';
+
+  md += `---\n\n${done.length} of ${pending.length + done.length} done\n`;
+  return md;
+}
+
+function downloadBoard() {
+  if (!bubbles.length && !completedTexts.length) return;
+  downloadFile(`bubble-todo-${getDateStr().replace(/\//g, '-')}.md`, buildBoardMarkdown());
+}
+
+exportBtn.addEventListener('click', downloadBoard);
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    downloadBoard();
+  }
+});
+
+downloadBtn.addEventListener('click', () => {
+  const lines = completedTexts.map(t => `- [x] ~~${mdEscape(t)}~~`);
+  const content = `# Completed Tasks — ${getDateStr()}\n\n${lines.join('\n')}\n\nTotal: ${completedTexts.length} task${completedTexts.length > 1 ? 's' : ''}\n`;
+  downloadFile(`completed-tasks-${getDateStr().replace(/\//g, '-')}.md`, content);
 });
 
 // ── Load saved state on startup ──
