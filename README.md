@@ -12,7 +12,8 @@ A playful, single-page to-do app where tasks float as colorful bubbles on a dark
 2. **Complete a task** — Press and hold a bubble for 2 seconds. A progress ring fills up, the bubble shakes, then pops with a particle burst. The task moves to the **Completed** list in the top-right corner.
 3. **Delete a task** — Right-click any bubble to instantly remove it without recording it as completed.
 4. **Drag to rearrange** — Click and drag bubbles anywhere on the canvas.
-5. **Download your list** — Once you've completed tasks, click the **Download List** button to save a `.md` file of everything you finished that day.
+5. **Download the whole board** — Click **Download Board** (or press `Ctrl+S`) to save the entire board as a Markdown checklist: floating bubbles become open items `- [ ] task`, and finished ones come down as `- [x] ~~task~~` with strikethrough.
+6. **Download just what you finished** — Once you've completed tasks, click the **Download List** button to save a `.md` file of everything you finished that day.
 
 ## Persistence
 
@@ -41,7 +42,8 @@ Then open `index.html` in any modern browser. That's it.
 | Right-click to delete | Remove a task silently (no completed record) |
 | Particle effects | Satisfying pop animation on completion |
 | Congrats toasts | Random motivational message on each completion |
-| Download list | Export completed tasks as a text file |
+| Download board | One press exports every bubble as a Markdown checklist — open items unchecked, completed ones checked and struck through |
+| Download list | Export completed tasks as a Markdown file |
 | Responsive | Bubbles stay within visible bounds and avoid overlap |
 
 ## Browser Support
